@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Digital Rain • Tela de Descanso</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none; /* Impede seleção acidental de texto */
+        }
+        body {
+            background: #000000;
+            overflow: hidden;
+            font-family: 'Courier New', 'Consolas', monospace;
+            width: 100vw;
+            height: 100vh;
+            cursor: none; /* Oculta o mouse por padrão para o modo descanso */
+            transition: cursor 0.3s;
+        }
+        /* Classe para mostrar o cursor quando o usuário mover o mouse */
+        body.show-cursor {
+            cursor: default;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .overlay, .title {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00FF41;
+            font-family: 'Courier New', 'Consolas', monospace;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            transition: opacity 1.5s ease, transform 1.5s ease;
+        }
+        .title {
+            top: 20px;
+            font-size: 11px;
+            letter-spacing: 4px;
+            text-shadow: 0 0 10px #00FF41;
+            opacity: 0.5;
+        }
+        .overlay {
+            bottom: 30px;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-shadow: 0 0 8px #00FF41;
+            opacity: 0.7;
+        }
+        .hidden {
+            opacity: 0 !important;
+            transform: translate(-50%, 15px); /* Efeito suave de descida ao sumir */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix"></canvas>
+    <div class="title" id="title">THE MATRIX • 1999</div>
+    <div class="overlay" id="overlay">CLIQUE PARA ACELERAR • MOVA O MOUSE PARA ACORDAR</div>
+
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d', { alpha: false }); // alpha: false melhora a performance de renderização
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        const fontSize = 16;
+        let columns = Math.floor(width / fontSize);
+        let drops = [];
+        let speeds = [];
+
+        // Inicializa as gotas garantindo que algumas comecem fora da tela e outras já no meio 
+        // para evitar o efeito de "tela vazia" quando o screensaver inicia.
+        function initDrops() {
+            columns = Math.floor(width / fontSize);
+            drops = [];
+            speeds = [];
+            for (let i = 0; i < columns; i++) {
+                // Distribui o início de forma randômica ao longo de toda a altura da tela
+                drops[i] = Math.random() * (height / fontSize) - (height / fontSize);
+                speeds[i] = 0.6 + Math.random() * 0.8; 
+            }
+        }
+
+        initDrops();
+
+        const binaryChars = '01';
+
+        // Preenche o fundo de preto imediatamente antes da animação começar 
+        // para evitar "pisques" de tela branca ou cinza em carregamentos lentos.
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+
+        function draw() {
+            // Efeito rastro clássico da Matrix (ajuste de opacidade do fundo)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Estilização do texto
+            ctx.font = `bold ${fontSize}px 'Courier New', 'Consolas', monospace`;
+
+            for (let i = 0; i < drops.length; i++) {
+                const char = binaryChars[Math.floor(Math.random() * binaryChars.length)];
+                const x = i * fontSize;
+                const y = drops[i] * fontSize;
+
+                // Brilho na ponta da gota (caractere mais recente é branco/verde claro brilhante)
+                if (Math.random() > 0.90) {
+                    ctx.fillStyle = '#E8FFF5';
+                    ctx.shadowColor = '#00FF41';
+                    ctx.shadowBlur = 8;
+                } else {
+                    ctx.fillStyle = '#00FF41';
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.fillText(char, x, y);
+
+                // Movimento
+                drops[i] += speeds[i];
+
+                // Reseta a gota de volta para o topo de forma randômica após sair da tela
+                if (drops[i] * fontSize > height) {
+                    if (Math.random() > 0.975) { 
+                        drops[i] = 0;
+                    }
+                }
+            }
+        }
+
+        // Loop de animação travado a 30 FPS para manter a CPU fria e silenciosa
+        let lastTime = 0;
+        const targetFPS = 30;
+        const frameInterval = 1000 / targetFPS;
+
+        function animate(currentTime = 0) {
+            if (currentTime - lastTime >= frameInterval) {
+                draw();
+                lastTime = currentTime;
+            }
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Tratamento inteligente de redimensionamento de janela (Debounce)
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                canvas.width = width;
+                canvas.height = height;
+                initDrops();
+            }, 100);
+        });
+
+        // --- SISTEMA DE TELA DE DESCANSO (COMPORTAMENTO DO MOUSE) ---
+        
+        const overlay = document.getElementById('overlay');
+        const title = document.getElementById('title');
+        let mouseTimer;
+
+        // Oculta os textos informativos após 5 segundos
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            title.classList.add('hidden');
+        }, 5000);
+
+        // Gerencia a exibição do cursor do mouse: se mover, ele aparece; se parar, ele some.
+        function showCursorAndResetTimer() {
+            document.body.classList.add('show-cursor');
+            clearTimeout(mouseTimer);
+            mouseTimer = setTimeout(() => {
+                document.body.classList.remove('show-cursor');
+            }, 3000); // Some com o cursor após 3 segundos de inatividade
+        }
+
+        window.addEventListener('mousemove', showCursorAndResetTimer);
+        window.addEventListener('mousedown', showCursorAndResetTimer);
+
+        // Easter Egg: Acelerar a chuva temporariamente com clique
+        let clickBoost = false;
+        canvas.addEventListener('click', () => {
+            if (clickBoost) return;
+            clickBoost = true;
+            
+            const originalSpeeds = [...speeds];
+            for (let i = 0; i < speeds.length; i++) {
+                speeds[i] = speeds[i] * 2.5; // Dobra a velocidade
+            }
+            
+            setTimeout(() => {
+                speeds = originalSpeeds;
+                clickBoost = false;
+            }, 2000);
+        });
+
+        // Suporte para entrar em Tela Cheia (Double Click)
+        window.addEventListener('dblclick', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Erro ao ativar tela cheia: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>
